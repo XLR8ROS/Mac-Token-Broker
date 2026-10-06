@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mac-token-broker"
+version = "0.1.0"
+description = "Deterministic local credential broker for macOS Python services"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+token-broker = "mac_token_broker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
