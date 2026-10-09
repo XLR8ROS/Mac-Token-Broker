@@ -43,9 +43,6 @@ class TokenBroker:
             raise MalformedRequest(f"Unsupported provider adapter: {provider_id}")
         secret_ref = f"credential:{credential_id}"
         refresh_ref = f"refresh:{credential_id}" if refresh_secret is not None else None
-        self.secrets.put(secret_ref, secret)
-        if refresh_ref is not None:
-            self.secrets.put(refresh_ref, refresh_secret)
         record = CredentialRecord(
             credential_id=credential_id,
             provider_id=provider_id,
@@ -54,7 +51,22 @@ class TokenBroker:
             refresh_ref=refresh_ref,
             metadata=metadata or {},
         )
+        # Reserve a unique registry ID before touching Keychain. Duplicate
+        # registrations must never overwrite an existing credential secret.
         self.storage.add_credential(record)
+        try:
+            self.secrets.put(secret_ref, secret)
+            if refresh_ref is not None:
+                self.secrets.put(refresh_ref, refresh_secret)
+        except Exception:
+            self.storage.remove_credential(credential_id)
+            for ref in (secret_ref, refresh_ref):
+                if ref is not None:
+                    try:
+                        self.secrets.delete(ref)
+                    except Exception:
+                        pass
+            raise
         self.audit.record("credential_added", credential_id=credential_id, provider_id=provider_id)
 
     def update_credential_secret(self, credential_id: str, secret: str, *, expires_at=None) -> None:
