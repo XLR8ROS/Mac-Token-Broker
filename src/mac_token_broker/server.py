@@ -16,16 +16,18 @@ class BrokerRequestHandler(socketserver.StreamRequestHandler):
             service_id = payload.get("service_id")
             if not service_id:
                 raise ValueError("service_id is required")
-            value = self.server.broker.get_credential(
-                service_id=service_id,
-                credential_id=payload.get("credential_id"),
-                provider_id=payload.get("provider_id"),
-            )
-            result = {"ok": True, "credential": value}
+            # SECURITY: The service_id supplied by a caller is NOT proof of its
+            # identity. Until a per-service authentication mechanism is
+            # implemented, the IPC endpoint must never return secrets.
+            result = {
+                "ok": False,
+                "error": "ServiceAuthenticationUnavailable",
+                "message": "Secure caller authentication has not been configured.",
+            }
         except (TokenBrokerError, ValueError, json.JSONDecodeError) as exc:
             result = {"ok": False, "error": type(exc).__name__, "message": str(exc)}
-        except Exception as exc:
-            result = {"ok": False, "error": "BrokerFailure", "message": str(exc)}
+        except Exception:
+            result = {"ok": False, "error": "BrokerFailure", "message": "Request handling failed."}
         self.wfile.write((json.dumps(result) + "\n").encode("utf-8"))
 
 
