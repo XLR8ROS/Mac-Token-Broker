@@ -22,17 +22,19 @@ store provider tokens or implement provider refresh themselves.
 
 ## Critical security state
 
-**The Unix socket server is intentionally fail-closed.** It does not dispense
-secrets, even if a request names a registered service. A caller-provided
-`service_id` does not authenticate that caller. An HMAC helper exists but
-is not integrated into the service protocol. Merely moving an authentication
-key into a shared user Keychain does not provide process isolation when
-multiple services run under the same macOS user.
+The Unix socket server checks the kernel-reported macOS peer UID with
+`getpeereid` before dispatching a credential request. It rejects unknown,
+mismatched, broker-owner, and duplicate service UIDs. Each registered service
+must have a dedicated non-root macOS account and its own `--peer-uid`.
 
-Before production use, establish and verify an enforceable service identity
-boundary, such as separate OS accounts with peer-credential authorization,
-or an equivalent system-enforced mechanism. An application-level HMAC is
-insufficient if another same-user service can obtain its proof material.
+**Production access has not been accepted yet:** creating dedicated OS users,
+running service processes under those users, and demonstrating an actual
+cross-user socket connection require administrative provisioning on the Mac.
+The automated tests exercise real peer UID retrieval and mocked authorized
+cross-user dispatch; those are not a substitute for a live end-to-end test.
+The registered-identity model is per OS account, not per Python module.
+Services sharing one macOS UID cannot be distinguished safely by this broker.
+
 
 The current in-process `TokenBroker.get_credential` handles assignments but
 is an administrative/trusted-context API, **not** a safe untrusted-service
