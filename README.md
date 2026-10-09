@@ -1,67 +1,64 @@
 # Mac Token Broker
 
-Deterministic local Python credential broker for macOS.
+Deterministic standalone credential broker for local Python services on macOS.
 
-## Purpose
+## Design
 
-Mac Token Broker provides one centralized place for local Python programs and services to obtain the credentials they are authorized to use.
+One central broker and one centrally stored copy of a provider credential.
+Registered services receive explicit credential assignments. Consumers must not
+store provider tokens or implement provider refresh themselves.
 
-Credentials belong to the broker. Consumer services do not maintain provider tokens, API keys, refresh tokens, per-service secret files, or provider-specific refresh logic.
+## Implemented
 
-## Core Rules
+- SQLite registry for services, credentials, and assignments
+- macOS Keychain secret store
+- Provider-independent broker, static credentials, OAuth2 refresh adapter
+- Administrative CLI, Unix socket server, and Python client
+- JSONL audit log with allowlisted metadata and restricted file permissions
+- launchd LaunchAgent installer and startup configuration
+- Automated tests for authorization decisions, persistence, expiration,
+  OAuth refresh, audit data protection, LaunchAgent import path, and
+  fail-closed socket behavior
 
-- One central broker.
-- One copy of a credential unless there is a real reason for another.
-- Stable service IDs identify local consumers.
-- Services may retrieve only credentials explicitly assigned to them.
-- Multiple services may share one centrally managed credential when authorized.
-- Provider-specific refresh and renewal behavior stays inside the broker.
-- Long-lived credentials remain long-lived when the provider permits it.
-- Secret values are never committed to Git or written to logs.
-- Failures are explicit. The broker never silently substitutes another credential.
+## Critical security state
 
-## Planned Interface
+**The Unix socket server is intentionally fail-closed.** It does not dispense
+secrets, even if a request names a registered service. A caller-provided
+`service_id` does not authenticate that caller. An HMAC helper exists but
+is not integrated into the service protocol. Merely moving an authentication
+key into a shared user Keychain does not provide process isolation when
+multiple services run under the same macOS user.
 
-Consumers will request credentials through a small local Python-facing interface.
+Before production use, establish and verify an enforceable service identity
+boundary, such as separate OS accounts with peer-credential authorization,
+or an equivalent system-enforced mechanism. An application-level HMAC is
+insufficient if another same-user service can obtain its proof material.
 
-Conceptually:
+The current in-process `TokenBroker.get_credential` handles assignments but
+is an administrative/trusted-context API, **not** a safe untrusted-service
+interface.
 
-```python
-get_credential(service_id, credential_id)
+## Run tests
+
+From the repository root:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-or:
+The Mac test environment has been running these tests with Python 3.9.6,
+although the package metadata targets Python 3.11 or newer. This discrepancy
+must be resolved before the installation can pass acceptance.
 
-```python
-get_credential(service_id, provider_id)
-```
+## Deployment is not complete
 
-The broker will validate the service, enforce assignment authorization, ensure the credential is usable, refresh it when provider rules require refresh, and return the usable credential.
+The LaunchAgent is committed, but live Keychain operations, automatic
+startup, crash recovery, and per-service access are not yet acceptance-tested.
+Do not register production secrets until the service identity gate passes.
 
-## Project Layout
+## Source
 
-```text
-src/mac_token_broker/
-    __init__.py
-    broker.py
-    errors.py
-    models.py
-    storage.py
-    audit.py
-    cli.py
-    providers/
-        __init__.py
-tests/
-pyproject.toml
-.gitignore
-```
+Repository: `XLR8ROS/Mac-Token-Broker`
 
-Provider modules will remain isolated from broker core logic.
-
-## macOS Runtime
-
-The finished broker will run locally on the Mac as a background service, persist registry and credential state across restarts, start automatically at login or reboot, and restart automatically after failure using the appropriate macOS service mechanism.
-
-## Status
-
-Repository initialized. Implementation is in progress.
+The Token Broker is standalone and is not a prerequisite for Paperclip's
+built-in secrets functionality.
