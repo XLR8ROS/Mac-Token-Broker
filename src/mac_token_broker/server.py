@@ -6,6 +6,7 @@ import socketserver
 from pathlib import Path
 
 from .errors import TokenBrokerError
+from .peer_identity import authorize_peer, peer_uid
 from .runtime import build_broker
 
 
@@ -14,16 +15,16 @@ class BrokerRequestHandler(socketserver.StreamRequestHandler):
         try:
             payload = json.loads(self.rfile.readline().decode("utf-8"))
             service_id = payload.get("service_id")
-            if not service_id:
+            if not isinstance(service_id, str) or not service_id:
                 raise ValueError("service_id is required")
-            # SECURITY: The service_id supplied by a caller is NOT proof of its
-            # identity. Until a per-service authentication mechanism is
-            # implemented, the IPC endpoint must never return secrets.
-            result = {
-                "ok": False,
-                "error": "ServiceAuthenticationUnavailable",
-                "message": "Secure caller authentication has not been configured.",
-            }
+            uid = peer_uid(self.request)
+            authorize_peer(service_id, uid, self.server.broker.storage)
+            value = self.server.broker.get_credential(
+                service_id=service_id,
+                credential_id=payload.get("credential_id"),
+                provider_id=payload.get("provider_id"),
+            )
+            result = {"ok": True, "credential": value}
         except (TokenBrokerError, ValueError, json.JSONDecodeError) as exc:
             result = {"ok": False, "error": type(exc).__name__, "message": str(exc)}
         except Exception:
@@ -40,7 +41,7 @@ class UnixBrokerServer(socketserver.UnixStreamServer):
 def serve(socket_path: Path) -> None:
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     if socket_path.exists():
-        socket_path.unlink()
+        raise RuntimeError("Socket path already exists; refusing to replace an unknown endpoint.")
     server = UnixBrokerServer(socket_path)
     os.chmod(socket_path, 0o600)
     try:
