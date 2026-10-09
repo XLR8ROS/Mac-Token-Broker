@@ -16,7 +16,10 @@ class OAuth2Provider:
     def ensure_usable(self, record: CredentialRecord, secrets: SecretStore) -> tuple[str, CredentialRecord]:
         now = datetime.now(timezone.utc)
         skew = int(record.metadata.get("refresh_skew_seconds", 60))
-        if record.expires_at is None or record.expires_at > now + timedelta(seconds=skew):
+        expiry = record.expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if expiry is None or expiry > now + timedelta(seconds=skew):
             return secrets.get(record.secret_ref), record
 
         if not record.refresh_ref:
