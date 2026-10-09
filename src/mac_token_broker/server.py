@@ -40,10 +40,14 @@ class UnixBrokerServer(socketserver.UnixStreamServer):
 
 def serve(socket_path: Path) -> None:
     socket_path.parent.mkdir(parents=True, exist_ok=True)
+    parent = socket_path.parent.stat()
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
+        raise RuntimeError("Insecure or unowned broker socket directory.")
     if socket_path.exists():
         raise RuntimeError("Socket path already exists; refusing to replace an unknown endpoint.")
     server = UnixBrokerServer(socket_path)
-    os.chmod(socket_path, 0o600)
+    # Kernel-verified UID authorization controls access; the socket is discoverable by distinct OS users.
+    os.chmod(socket_path, 0o666)
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
