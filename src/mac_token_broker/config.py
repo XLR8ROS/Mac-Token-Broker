@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 APP_SUPPORT = Path.home() / "Library" / "Application Support" / "XLR8ROS" / "TokenBroker"
-RUNTIME_DIR = Path("/Users/Shared/XLR8ROS-TokenBroker")
+RUNTIME_DIR = APP_SUPPORT / "run"
 DEFAULT_DB = APP_SUPPORT / "broker.sqlite3"
 DEFAULT_AUDIT_LOG = APP_SUPPORT / "audit.jsonl"
 DEFAULT_SOCKET = RUNTIME_DIR / "broker.sock"
@@ -22,5 +22,5 @@ class BrokerConfig:
         for path in (self.db_path.parent, self.audit_path.parent):
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chmod(path, 0o700)
-        self.socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o711)
-        os.chmod(self.socket_path.parent, 0o711)
+        self.socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.socket_path.parent, 0o700)
