@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,6 @@ class BrokerConfig:
     socket_path: Path = DEFAULT_SOCKET
 
     def ensure_dirs(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.audit_path.parent.mkdir(parents=True, exist_ok=True)
-        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        for path in (self.db_path.parent, self.audit_path.parent, self.socket_path.parent):
+            path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(path, 0o700)
