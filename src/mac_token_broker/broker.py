@@ -127,7 +127,16 @@ class TokenBroker:
 
         old_updated_at = record.updated_at
         old_expires_at = record.expires_at
-        needs_refresh = record.expires_at is not None and record.expires_at <= datetime.now(timezone.utc)
+        expiry = record.expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        from datetime import timedelta
+        skew = int(record.metadata.get("refresh_skew_seconds", 60))
+        needs_refresh = (
+            record.provider_id == "oauth2"
+            and expiry is not None
+            and expiry <= datetime.now(timezone.utc) + timedelta(seconds=skew)
+        )
         if needs_refresh:
             self.audit.record(
                 "refresh_attempted",
