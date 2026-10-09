@@ -23,7 +23,7 @@ class PeerIdentityTests(unittest.TestCase):
         with self.assertRaises(CredentialNotAssigned):
             authorize_peer("worker", 903, store)
 
-    def test_shared_uid_denied(self):
+    def test_shared_nonowner_uid_denied(self):
         store = Mock()
         store.get_service.return_value = ServiceRecord("worker", "Worker", {"peer_uid": 902})
         store.list_services.return_value = [
@@ -32,6 +32,12 @@ class PeerIdentityTests(unittest.TestCase):
         ]
         with self.assertRaises(CredentialNotAssigned):
             authorize_peer("worker", 902, store)
+
+    def test_same_owner_uid_allowed(self):
+        store = Mock()
+        store.get_service.return_value = ServiceRecord("stenographer", "Stenographer", {"peer_uid": 501})
+        with patch("mac_token_broker.peer_identity.os.getuid", return_value=501):
+            authorize_peer("stenographer", 501, store)
 
     def test_dedicated_different_uid_allowed(self):
         store = Mock()
