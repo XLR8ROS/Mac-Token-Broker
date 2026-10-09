@@ -15,7 +15,7 @@ def build_parser():
     for cmd in ("service-add", "service-remove", "service-list", "credential-add", "credential-update", "credential-remove", "credential-list", "assign", "revoke", "assignments", "status", "serve", "install", "uninstall"):
         s = sub.add_parser(cmd)
         if cmd == "service-add":
-            s.add_argument("service_id"); s.add_argument("name"); s.add_argument("--peer-uid", type=int, required=True)
+            s.add_argument("service_id"); s.add_argument("name"); s.add_argument("--peer-uid", type=int)
         elif cmd in ("service-remove", "assignments"):
             s.add_argument("service_id")
         elif cmd == "credential-add":
@@ -46,9 +46,10 @@ def main():
         uninstall_launchd(); return 0
     b = build_broker()
     if a.cmd == "service-add":
-        if a.peer_uid <= 0:
-            p.error("--peer-uid must be a dedicated non-root macOS service UID")
-        b.register_service(a.service_id, a.name, metadata={"peer_uid": a.peer_uid})
+        if a.peer_uid is not None and a.peer_uid <= 0:
+            p.error("--peer-uid must be a positive macOS UID")
+        import os
+        b.register_service(a.service_id, a.name, metadata={"peer_uid": a.peer_uid if a.peer_uid is not None else os.getuid()})
     elif a.cmd == "service-remove": b.remove_service(a.service_id)
     elif a.cmd == "service-list":
         print(json.dumps([vars(x) for x in b.storage.list_services()], default=str, indent=2))
