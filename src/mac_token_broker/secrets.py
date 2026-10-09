@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import subprocess
+import ctypes as C
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -14,38 +14,84 @@ class SecretStore(Protocol):
     def delete(self, ref: str) -> None: ...
 
 
+class _Security:
+    def __init__(self):
+        self.api = C.CDLL("/System/Library/Frameworks/Security.framework/Security")
+        self.cf = C.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+        U, P = C.c_uint32, C.c_void_p
+        self.api.SecKeychainFindGenericPassword.argtypes = [P, U, P, U, P, C.POINTER(U), C.POINTER(P), C.POINTER(P)]
+        self.api.SecKeychainFindGenericPassword.restype = C.c_int32
+        self.api.SecKeychainAddGenericPassword.argtypes = [P, U, P, U, P, U, P, C.POINTER(P)]
+        self.api.SecKeychainAddGenericPassword.restype = C.c_int32
+        self.api.SecKeychainItemModifyAttributesAndData.argtypes = [P, P, U, P]
+        self.api.SecKeychainItemModifyAttributesAndData.restype = C.c_int32
+        self.api.SecKeychainItemDelete.argtypes = [P]
+        self.api.SecKeychainItemDelete.restype = C.c_int32
+        self.api.SecKeychainItemFreeContent.argtypes = [P, P]
+        self.api.SecKeychainItemFreeContent.restype = C.c_int32
+        self.cf.CFRelease.argtypes = [P]
+
+    def item(self, service: bytes, account: bytes):
+        item = C.c_void_p()
+        result = self.api.SecKeychainFindGenericPassword(
+            None, len(service), C.c_char_p(service), len(account), C.c_char_p(account),
+            None, None, C.byref(item))
+        if result == -25300:
+            return None
+        if result:
+            raise BrokerStorageFailure(f"Keychain lookup failed (OSStatus {result}).")
+        return item
+
+
 @dataclass
 class MacOSKeychainStore:
     service_name: str = KEYCHAIN_SERVICE
 
     def put(self, ref: str, secret: str) -> None:
-        proc = subprocess.run(
-            ["security", "add-generic-password", "-U", "-a", ref, "-s", self.service_name, "-w"],
-            input=secret + "\n",
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
-            raise BrokerStorageFailure(proc.stderr.strip() or "Unable to store secret in macOS Keychain.")
+        api = _Security()
+        service, account, value = self.service_name.encode(), ref.encode(), secret.encode()
+        item = api.item(service, account)
+        try:
+            if item is None:
+                status = api.api.SecKeychainAddGenericPassword(
+                    None, len(service), C.c_char_p(service), len(account), C.c_char_p(account),
+                    len(value), C.c_char_p(value), None)
+            else:
+                status = api.api.SecKeychainItemModifyAttributesAndData(
+                    item, None, len(value), C.c_char_p(value))
+            if status:
+                raise BrokerStorageFailure(f"Keychain write failed (OSStatus {status}).")
+        finally:
+            if item is not None:
+                api.cf.CFRelease(item)
 
     def get(self, ref: str) -> str:
-        proc = subprocess.run(
-            ["security", "find-generic-password", "-a", ref, "-s", self.service_name, "-w"],
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
+        api = _Security()
+        service, account = self.service_name.encode(), ref.encode()
+        size, data = C.c_uint32(), C.c_void_p()
+        status = api.api.SecKeychainFindGenericPassword(
+            None, len(service), C.c_char_p(service), len(account), C.c_char_p(account),
+            C.byref(size), C.byref(data), None)
+        if status == -25300:
             raise CredentialMissing(f"Secret reference not found: {ref}")
-        return proc.stdout.rstrip("\n")
+        if status:
+            raise BrokerStorageFailure(f"Keychain read failed (OSStatus {status}).")
+        try:
+            return C.string_at(data, size.value).decode()
+        finally:
+            api.api.SecKeychainItemFreeContent(None, data)
 
     def delete(self, ref: str) -> None:
-        proc = subprocess.run(
-            ["security", "delete-generic-password", "-a", ref, "-s", self.service_name],
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode not in (0, 44):
-            raise BrokerStorageFailure(proc.stderr.strip() or "Unable to delete secret from macOS Keychain.")
+        api = _Security()
+        item = api.item(self.service_name.encode(), ref.encode())
+        if item is None:
+            return
+        try:
+            status = api.api.SecKeychainItemDelete(item)
+            if status:
+                raise BrokerStorageFailure(f"Keychain delete failed (OSStatus {status}).")
+        finally:
+            api.cf.CFRelease(item)
 
 
 class MemorySecretStore:
