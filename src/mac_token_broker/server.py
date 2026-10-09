@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
+import socket
 import socketserver
+import stat
 from pathlib import Path
 
 from .errors import TokenBrokerError
@@ -38,15 +41,31 @@ class UnixBrokerServer(socketserver.UnixStreamServer):
         super().__init__(str(socket_path), BrokerRequestHandler)
 
 
+def _clear_stale_socket(path: Path) -> None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
+        raise RuntimeError("Refusing to replace non-socket or foreign-owned endpoint.")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+        try:
+            probe.connect(str(path))
+        except OSError as exc:
+            if exc.errno != errno.ECONNREFUSED:
+                raise RuntimeError("Cannot establish whether socket is stale.") from exc
+        else:
+            raise RuntimeError("Broker endpoint is already active.")
+    path.unlink()
+
+
 def serve(socket_path: Path) -> None:
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     parent = socket_path.parent.stat()
     if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
         raise RuntimeError("Insecure or unowned broker socket directory.")
-    if socket_path.exists():
-        raise RuntimeError("Socket path already exists; refusing to replace an unknown endpoint.")
+    _clear_stale_socket(socket_path)
     server = UnixBrokerServer(socket_path)
-    # Kernel-verified UID authorization controls access; the socket is discoverable by distinct OS users.
     os.chmod(socket_path, 0o666)
     try:
         server.serve_forever(poll_interval=0.5)
