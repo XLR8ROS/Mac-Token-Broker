@@ -49,11 +49,14 @@ launchctl print gui/$(id -u)/com.xlr8ros.token-broker
 cannot authenticate merely by asserting its `service_id`, and consumers
 running under the broker owner's UID are deliberately denied.
 
-Every independently authorized consumer needs its own dedicated macOS service
-account (UID). The administrator must create or designate those accounts,
-arrange for service processes to run under their respective UIDs, and permit
-an end-to-end retrieval test. The remote execution account cannot perform
-these privileged account changes.
+XOS programs may run under the broker owner's macOS account. The socket is
+restricted to that local account (mode 0600 in an owner-only directory), and
+registered service IDs plus assignments are used for routing. There is no
+requirement to create separate macOS accounts for ordinary XOS programs.
+This deliberately trusts processes already running as that macOS user: a
+malicious process under the same account could impersonate another service.
+A name, file hash, or fingerprint alone is not a reliable defense against
+such a same-user compromise.
 
 Service registration uses:
 
@@ -61,14 +64,13 @@ Service registration uses:
 PYTHONPATH=src python3 -m mac_token_broker.cli service-add SERVICE_ID "Service Name" --peer-uid UID
 ```
 
-The UID must be a dedicated, non-root OS identity. Do not register multiple
-services with the same UID. Run administrative CLI commands only from the
+The optional UID defaults to the Mac account running the broker. Multiple XOS
+services may share that account. Run administrative CLI commands only from the
 broker owner's trusted account.
 
-The shared socket is at
-`/Users/Shared/XLR8ROS-TokenBroker/broker.sock`. Its name is discoverable,
-but secret delivery is conditional on kernel-verified UID and explicit
-credential assignment. The SQLite registry and Keychain remain private to
+The owner-only socket is at
+`~/Library/Application Support/XLR8ROS/TokenBroker/run/broker.sock`.
+Credential delivery requires an approved service ID and assignment. The SQLite registry and Keychain remain private to
 the broker account.
 
 ## Operational caution
