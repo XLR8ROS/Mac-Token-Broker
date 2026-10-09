@@ -1,66 +1,80 @@
 # Mac Token Broker
 
-Deterministic standalone credential broker for local Python services on macOS.
+Standalone Python credential broker for local XOS services on macOS.
 
-## Design
+## Operating principle
 
-One central broker and one centrally stored copy of a provider credential.
-Registered services receive explicit credential assignments. Consumers must not
-store provider tokens or implement provider refresh themselves.
+One central credential store, one registry, and explicit service-to-credential
+assignments. Consumers request only assigned credentials; the broker manages
+the provider lifecycle, persistence, refresh, and auditing.
 
 ## Implemented
 
-- SQLite registry for services, credentials, and assignments
-- macOS Keychain secret store
-- Provider-independent broker, static credentials, OAuth2 refresh adapter
-- Administrative CLI, Unix socket server, and Python client
-- JSONL audit log with allowlisted metadata and restricted file permissions
-- launchd LaunchAgent installer and startup configuration
-- Automated tests for authorization decisions, persistence, expiration,
-  OAuth refresh, audit data protection, LaunchAgent import path, and
-  fail-closed socket behavior
+- SQLite service, credential, and assignment registry
+- Native Security.framework macOS Keychain secret storage (no secrets in argv)
+- Static and OAuth2 refresh adapters, with expiration handling
+- Administrative CLI, Unix-domain socket IPC, and Python client
+- Kernel-reported macOS peer UID verification via `getpeereid`
+- Allowlisted audit metadata and restrictive filesystem permissions
+- LaunchAgent installation, RunAtLoad, KeepAlive, and safe stale-socket recovery
+- Typed errors for unknown service, denied assignment, missing/invalid
+  credential, refresh failure, storage failure, and unavailable broker
 
-## Critical security state
+## Verified Mac state (October 9, 2026)
 
-The Unix socket server checks the kernel-reported macOS peer UID with
-`getpeereid` before dispatching a credential request. It rejects unknown,
-mismatched, broker-owner, and duplicate service UIDs. Each registered service
-must have a dedicated non-root macOS account and its own `--peer-uid`.
+The LaunchAgent `com.xlr8ros.token-broker` runs from the canonical checkout
+`/Users/reginaldberry/Projects/Mac-Token-Broker` using macOS Python 3.9.6.
 
-**Production access has not been accepted yet:** creating dedicated OS users,
-running service processes under those users, and demonstrating an actual
-cross-user socket connection require administrative provisioning on the Mac.
-The automated tests exercise real peer UID retrieval and mocked authorized
-cross-user dispatch; those are not a substitute for a live end-to-end test.
-The registered-identity model is per OS account, not per Python module.
-Services sharing one macOS UID cannot be distinguished safely by this broker.
+Verified:
 
+- Native Keychain store, retrieve, rotate, and delete using synthetic values
+- Explicit denial of a real local socket request from a mismatched macOS UID
+- Crash recovery by forcing SIGKILL through launchctl, then verifying restart
+- Correct startup module path and Unix socket recreation
+- 20 automated tests passing on the Mac
+- No production credentials provisioned
 
-The current in-process `TokenBroker.get_credential` handles assignments but
-is an administrative/trusted-context API, **not** a safe untrusted-service
-interface.
-
-## Run tests
-
-From the repository root:
+To inspect:
 
 ```sh
+cd /Users/reginaldberry/Projects/Mac-Token-Broker
 PYTHONPATH=src python3 -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m mac_token_broker.cli status
+launchctl print gui/$(id -u)/com.xlr8ros.token-broker
 ```
 
-The Mac test environment has been running these tests with Python 3.9.6,
-although the package metadata targets Python 3.11 or newer. This discrepancy
-must be resolved before the installation can pass acceptance.
+## Critical deployment dependency
 
-## Deployment is not complete
+**Cross-user authorized retrieval is not yet acceptance-tested.** A caller
+cannot authenticate merely by asserting its `service_id`, and consumers
+running under the broker owner's UID are deliberately denied.
 
-The LaunchAgent is committed, but live Keychain operations, automatic
-startup, crash recovery, and per-service access are not yet acceptance-tested.
-Do not register production secrets until the service identity gate passes.
+Every independently authorized consumer needs its own dedicated macOS service
+account (UID). The administrator must create or designate those accounts,
+arrange for service processes to run under their respective UIDs, and permit
+an end-to-end retrieval test. The remote execution account cannot perform
+these privileged account changes.
 
-## Source
+Service registration uses:
 
-Repository: `XLR8ROS/Mac-Token-Broker`
+```sh
+PYTHONPATH=src python3 -m mac_token_broker.cli service-add SERVICE_ID "Service Name" --peer-uid UID
+```
 
-The Token Broker is standalone and is not a prerequisite for Paperclip's
-built-in secrets functionality.
+The UID must be a dedicated, non-root OS identity. Do not register multiple
+services with the same UID. Run administrative CLI commands only from the
+broker owner's trusted account.
+
+The shared socket is at
+`/Users/Shared/XLR8ROS-TokenBroker/broker.sock`. Its name is discoverable,
+but secret delivery is conditional on kernel-verified UID and explicit
+credential assignment. The SQLite registry and Keychain remain private to
+the broker account.
+
+## Operational caution
+
+Do not add production credentials until the cross-user positive retrieval
+test, negative cross-user impersonation test, and full acceptance verification
+have passed. Native Keychain tests use synthetic credentials only.
+
+This broker is standalone and does not replace Paperclip's own secret handling.
