@@ -20,7 +20,8 @@ class MacOSKeychainStore:
 
     def put(self, ref: str, secret: str) -> None:
         proc = subprocess.run(
-            ["security", "add-generic-password", "-U", "-a", ref, "-s", self.service_name, "-w", secret],
+            ["security", "add-generic-password", "-U", "-a", ref, "-s", self.service_name, "-w"],
+            input=secret + "\n",
             capture_output=True,
             text=True,
         )
