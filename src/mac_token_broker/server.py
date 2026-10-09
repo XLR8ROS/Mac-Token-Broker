@@ -66,7 +66,7 @@ def serve(socket_path: Path) -> None:
         raise RuntimeError("Insecure or unowned broker socket directory.")
     _clear_stale_socket(socket_path)
     server = UnixBrokerServer(socket_path)
-    os.chmod(socket_path, 0o666)
+    os.chmod(socket_path, 0o600)
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
