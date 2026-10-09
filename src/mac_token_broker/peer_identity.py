@@ -26,9 +26,12 @@ def authorize_peer(service_id: str, uid: int, storage) -> None:
     required = rec.metadata.get("peer_uid")
     if type(required) is not int or required != uid:
         raise CredentialNotAssigned("Service process identity does not match registration.")
-    # One dedicated OS identity per independently authorized service.
+    # Trusted-user mode: multiple local services can share the broker owner's
+    # macOS account. Service IDs and assignments are routing rules, not a
+    # security boundary between processes running under that same UID.
+    if uid == os.getuid():
+        return
+    # Separate-UID mode remains available for services that need OS isolation.
     for other in storage.list_services():
         if other.service_id != service_id and other.metadata.get("peer_uid") == uid:
             raise CredentialNotAssigned("OS user is shared by multiple registered services.")
-    if uid == os.getuid():
-        raise CredentialNotAssigned("Broker owner identity cannot authenticate as a consumer.")
