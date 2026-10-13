@@ -80,3 +80,30 @@ test, negative cross-user impersonation test, and full acceptance verification
 have passed. Native Keychain tests use synthetic credentials only.
 
 This broker is standalone and does not replace Paperclip's own secret handling.
+
+## Google OAuth provider (integration added October 13, 2026)
+
+The `google` provider reuses the existing OAuth2 refresh adapter and macOS
+Keychain, with Google's token endpoint pinned to
+`https://oauth2.googleapis.com/token`. It does not create another broker.
+
+Provisioning requires an independently consented Google OAuth authorization
+code exchange for offline access and the appropriate service-specific scopes.
+The resulting access and refresh tokens must enter Keychain through the trusted
+administrator CLI, never via shell arguments, source control, or logs.
+
+Register with `credential-add GOOGLE_CREDENTIAL_ID google --client-id CLIENT_ID`,
+which prompts interactively for tokens. Set `--expires-at` as applicable;
+assign explicit service identities using the existing `assign` command.
+For confidential clients, a `client_secret_ref` Keychain reference is supported
+by the underlying OAuth2 adapter, but the CLI does not provision it automatically.
+
+This adapter only handles existing, properly obtained Google credentials and
+refresh. Initial interactive authorization, consent scope inventory, Google
+OAuth app verification, caller isolation and broker-controlled per-operation
+authorization are not implemented by this adapter. An assigned consumer
+receives its access token and therefore holds the scopes Google granted it.
+Do not describe this as Google token downscoping.
+
+Production credential provisioning remains gated by the pre-existing
+cross-user authentication and broker operational acceptance requirements.

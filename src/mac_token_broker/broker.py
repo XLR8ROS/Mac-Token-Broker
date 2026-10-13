@@ -6,6 +6,7 @@ from .audit import AuditLogger
 from .errors import CredentialNotAssigned, MalformedRequest
 from .models import AssignmentRecord, CredentialRecord, ServiceRecord
 from .providers.oauth2 import OAuth2Provider
+from .providers.google import GoogleOAuthProvider
 from .providers.static import StaticProvider
 from .secrets import SecretStore
 from .storage import BrokerStorage
@@ -19,6 +20,7 @@ class TokenBroker:
         self.providers = {
             "static": StaticProvider(),
             "oauth2": OAuth2Provider(),
+            "google": GoogleOAuthProvider(),
         }
 
     def register_service(self, service_id: str, name: str, metadata: dict | None = None) -> None:
@@ -133,7 +135,7 @@ class TokenBroker:
         from datetime import timedelta
         skew = int(record.metadata.get("refresh_skew_seconds", 60))
         needs_refresh = (
-            record.provider_id == "oauth2"
+            record.provider_id in ("oauth2", "google")
             and expiry is not None
             and expiry <= datetime.now(timezone.utc) + timedelta(seconds=skew)
         )

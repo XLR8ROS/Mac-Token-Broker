@@ -19,7 +19,7 @@ def build_parser():
         elif cmd in ("service-remove", "assignments"):
             s.add_argument("service_id")
         elif cmd == "credential-add":
-            s.add_argument("credential_id"); s.add_argument("provider_id", choices=["static", "oauth2"])
+            s.add_argument("credential_id"); s.add_argument("provider_id", choices=["static", "oauth2", "google"])
             s.add_argument("--expires-at"); s.add_argument("--token-url"); s.add_argument("--client-id")
         elif cmd == "credential-update":
             s.add_argument("credential_id"); s.add_argument("--expires-at")
@@ -55,12 +55,16 @@ def main():
         print(json.dumps([vars(x) for x in b.storage.list_services()], default=str, indent=2))
     elif a.cmd == "credential-add":
         secret = getpass.getpass("Credential secret: ")
-        refresh = getpass.getpass("Refresh secret: ") if a.provider_id == "oauth2" else None
+        refresh = getpass.getpass("Refresh secret: ") if a.provider_id in ("oauth2", "google") else None
         metadata = {}
-        if a.provider_id == "oauth2":
-            if not a.token_url or not a.client_id:
+        if a.provider_id in ("oauth2", "google"):
+            if (a.provider_id == "oauth2" and not a.token_url) or not a.client_id:
                 p.error("OAuth2 requires --token-url and --client-id")
-            metadata = {"token_url": a.token_url, "client_id": a.client_id}
+            metadata = {"client_id": a.client_id}
+            if a.provider_id == "oauth2":
+                metadata["token_url"] = a.token_url
+            elif a.token_url and a.token_url != "https://oauth2.googleapis.com/token":
+                p.error("Google token endpoint cannot be overridden")
         b.add_credential(a.credential_id, a.provider_id, secret,
                          expires_at=datetime.fromisoformat(a.expires_at) if a.expires_at else None,
                          refresh_secret=refresh, metadata=metadata)
