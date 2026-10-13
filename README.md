@@ -107,3 +107,16 @@ Do not describe this as Google token downscoping.
 
 Production credential provisioning remains gated by the pre-existing
 cross-user authentication and broker operational acceptance requirements.
+
+## Lightweight authorization expiry review
+
+Run `python3 tools/credential_expiry_report.py` weekly. It only reads the broker's
+SQLite registry, never accesses Keychain and never refreshes credentials.
+The resulting local `expiry-status.json` has mode 0600; read it at any time.
+A warning begins 14 days before the independently known authorization
+expiry. Unknown refresh-authorization lifetimes are reported as unknown,
+not falsely presented as permanent. Access-token expiration is deliberately
+not counted as an authorization warning. A known authorization expiry can
+be recorded in credential metadata as ISO8601
+`authorization_expires_at`. Automatic OAuth refresh remains on demand.
+The report is informational and never prevents broker or consumer operation.
